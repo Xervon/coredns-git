@@ -51,6 +51,7 @@ func Start(repo *Repo) {
 // services stores all repoServices
 type services struct {
 	services []*repoService
+	readyCount int
 	sync.Mutex
 }
 

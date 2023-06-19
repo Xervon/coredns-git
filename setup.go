@@ -28,19 +28,29 @@ func setup(c *caddy.Controller) error {
 		return err
 	}
 
+	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
+		git.Next = next
+		return git
+	})
+
 	var startupFuncs []func() error // functions to execute at startup
 
 	// loop through all repos and and start monitoring
-	for i := range git {
+	for i := range git.repos {
 		repo := git.Repo(i)
 
 		startupFuncs = append(startupFuncs, func() error {
-
 			// Start service routine in background
 			Start(repo)
 
 			// Do a pull right away to return error
-			return repo.Pull()
+			err := repo.Pull()
+
+			Services.Lock()
+			defer Services.Unlock()
+			Services.readyCount++
+
+			return err
 		})
 	}
 
@@ -50,14 +60,23 @@ func setup(c *caddy.Controller) error {
 		for i := range startupFuncs {
 			c.OnStartup(startupFuncs[i])
 		}
+		c.OnShutdown(func() error {
+			Services.Lock()
+			defer Services.Unlock()
+
+			for _, s := range Services.services {
+				s.halt <- struct{}{}
+			}
+			return nil
+		})
 		return nil
 	})
 
 	return nil
 }
 
-func parse(c *caddy.Controller) (Git, error) {
-	var git Git
+func parse(c *caddy.Controller) (*Git, error) {
+	var git = &Git{}
 
 	config := dnsserver.GetConfig(c)
 	for c.Next() {
@@ -128,7 +147,7 @@ func parse(c *caddy.Controller) (Git, error) {
 			return nil, plugin.Error("git", err)
 		}
 
-		git = append(git, repo)
+		git.repos = append(git.repos, repo)
 	}
 
 	return git, nil

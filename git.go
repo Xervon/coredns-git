@@ -1,6 +1,7 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -9,6 +10,10 @@ import (
 	"time"
 
 	"github.com/coredns/caddy"
+
+	"github.com/coredns/coredns/plugin"
+
+	"github.com/miekg/dns"
 )
 
 const (
@@ -20,14 +25,24 @@ const (
 )
 
 // Git represent multiple repositories.
-type Git []*Repo
+type Git struct {
+	Next plugin.Handler
+
+	repos []*Repo
+}
 
 // Repo retrieves repository at i or nil if not found.
 func (g Git) Repo(i int) *Repo {
-	if i < len(g) {
-		return g[i]
+	if i < len(g.repos) {
+		return g.repos[i]
 	}
 	return nil
+}
+
+func (g *Git) Name() string { return "git" }
+
+func (g *Git) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+	return plugin.NextOrFailure(g.Name(), g.Next, ctx, w, r)
 }
 
 // Repo is the structure that holds required information
